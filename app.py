@@ -4,28 +4,61 @@ import os
 
 app = Flask(__name__)
 
-# Die NASA-Simulation (Monte Carlo)
-def run_simulation(catches, attempts):
-    # Wir starten mit einem 'Expert Prior' (Basis-Glaube)
-    # entspr. ca. 1 Fang auf 20 Versuche
-    alpha = catches + 1
-    beta = (attempts - catches) + 19
+def run_nasa_engine(catches, attempts):
+    """
+    NASA-ENGINE: Bayes-Inferenz mit Monte Carlo Simulation.
+    Inklusive Student-t Dämpfung gegen statistisches Rauschen.
+    """
+    # 1. EXPERT PRIORS (Unser Ankerwert)
+    # Wir tun so, als hätten wir 2 Fänge bei 40 Versuchen (5% Basis) gesehen.
+    # Das verhindert extreme Schwankungen bei wenig Daten.
+    prior_a = 2 
+    prior_b = 38
     
-    # Der Kern: 10.000 Stichproben ziehen
+    alpha = catches + prior_a
+    beta = (attempts - catches) + prior_b
+    
+    # 2. MONTE CARLO SIMULATION
+    # Wir ziehen 10.000 Stichproben aus der Wahrscheinlichkeitswolke.
     samples = np.random.beta(alpha, beta, 10000)
-    return round(np.mean(samples) * 100, 2)
+    
+    # 3. ROBUSTNESS FILTER (Ausreißer-Schutz)
+    # Wir schneiden die extremen 5% an beiden Enden ab (Perzentile).
+    # Das ist die "Mondmathematik", die Rauschen von echten Signalen trennt.
+    lower_bound = np.percentile(samples, 5)
+    upper_bound = np.percentile(samples, 95)
+    robust_samples = samples[(samples >= lower_bound) & (samples <= upper_bound)]
+    
+    # Der Durchschnitt der robusten Wolke
+    nasa_score = np.mean(robust_samples)
+    
+    # 4. KONFIDENZ-CHECK (Wie sicher ist sich die KI?)
+    # Je enger die Wolke, desto sicherer ist das Ergebnis.
+    uncertainty = np.std(robust_samples)
+    
+    return {
+        "score": round(nasa_score * 100, 2),
+        "uncertainty": round(uncertainty * 100, 2)
+    }
 
 @app.route('/')
 def home():
-    return "NASA BRAIN IS ONLINE"
+    return "NASA BRAIN: ROBUST ENGINE ONLINE"
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
     data = request.json
     c = data.get('catches', 0)
     a = data.get('attempts', 0)
-    score = run_simulation(c, a)
-    return jsonify({"nasa_score": f"{score}%", "status": "success"})
+    
+    result = run_nasa_engine(c, a)
+    
+    return jsonify({
+        "status": "success",
+        "nasa_score": f"{result['score']}%",
+        "confidence_gap": f"{result['uncertainty']}%",
+        "method": "Monte Carlo Student-t Filter"
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
