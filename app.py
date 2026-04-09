@@ -1,12 +1,51 @@
 import numpy as np
 from flask import Flask, request, jsonify
 import os
+import json
+from datetime import datetime
 
 app = Flask(__name__)
 
-# NEU: Wir übergeben jetzt auch fish und water an die Engine
+# Der Name unserer "Aktenordner"-Datei
+HISTORY_FILE = "ai_history.json"
+
+def save_to_memory(catches, attempts, weather, fish, water):
+    """Speichert den Rucksack dauerhaft in der Datenbank ab."""
+    if not weather:
+        return # Ohne Wetter lernen wir nichts
+        
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "fish_type": fish,
+        "water_id": water,
+        "catches": catches,
+        "attempts": attempts,
+        "weather": weather
+    }
+    
+    # 1. Aktenordner öffnen (falls er schon existiert)
+    history = []
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r") as f:
+                history = json.load(f)
+        except Exception as e:
+            print(f"Fehler beim Lesen der Akte: {e}")
+            
+    # 2. Neue Postkarte abheften
+    history.append(entry)
+    
+    # 3. Aktenordner wieder schließen und speichern
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=4)
+        
+    print(f"\n--- 💾 KI HAT GESPEICHERT ---")
+    print(f"Eintrag Nr. {len(history)} erfolgreich abgeheftet!")
+    print(f"Zielfisch: {fish} | Gewässer: {water}")
+    print(f"-----------------------------\n")
+
 def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Unbekannt"):
-    # 1. BASIS-RECHNUNG (Die Mondmathematik)
+    # 1. BASIS-RECHNUNG
     prior_a = 2 
     prior_b = 38
     alpha = catches + prior_a
@@ -20,16 +59,8 @@ def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Un
     nasa_score = np.mean(robust_samples)
     uncertainty = np.std(robust_samples)
     
-    # 2. KI-LOG (Hier sieht das Gehirn jetzt ALLES)
-    if weather:
-        print(f"\n--- 🧠 NEUER DATENSATZ FÜR KI ---")
-        print(f"Ziel: {fish} am Gewässer: {water}")
-        print(f"Erfolg: {catches} Fänge bei {attempts} Versuchen")
-        print(f"Wetter: {weather.get('abs_pressure')} hPa | Trend 3h: {weather.get('pressure_trend_3h')} hPa")
-        if 'lat' in weather and 'lng' in weather:
-            print(f"Koordinaten: {weather.get('lat')}, {weather.get('lng')}")
-        print(f"----------------------------------\n")
-        # HIER kommt gleich die Datenbank hin!
+    # 2. ERINNERUNG SPEICHERN
+    save_to_memory(catches, attempts, weather, fish, water)
     
     return {
         "score": round(nasa_score * 100, 2),
@@ -38,27 +69,30 @@ def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Un
 
 @app.route('/')
 def home():
-    return "NASA BRAIN: FULL-CONTEXT ENGINE ONLINE"
+    # Wir zeigen direkt an, wie viele Einträge die KI schon gelernt hat
+    count = 0
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            count = len(json.load(f))
+    return f"NASA BRAIN ONLINE. Ich habe bereits {count} Angel-Erlebnisse studiert."
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
     data = request.json
     
-    # Den Rucksack komplett auspacken:
     c = data.get('catches', 0)
     a = data.get('attempts', 0)
     w = data.get('weather_context')
     fish_type = data.get('fish_type', 'Unbekannt')
     water_id = data.get('water_id', 'Unbekannt')
     
-    # Alles an die Engine übergeben
     result = run_nasa_engine(c, a, weather=w, fish=fish_type, water=water_id)
     
     return jsonify({
       "status": "success",
       "nasa_score": f"{result['score']}%",
       "confidence_gap": f"{result['uncertainty']}%",
-      "method": "Monte Carlo + Full Context Recording"
+      "method": "Monte Carlo + Database Storage"
     })
 
 if __name__ == "__main__":
