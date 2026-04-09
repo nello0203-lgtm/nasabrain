@@ -4,8 +4,9 @@ import os
 
 app = Flask(__name__)
 
-def run_nasa_engine(catches, attempts, weather=None):
-    # BASIS-RECHNUNG (Wie bisher)
+# NEU: Wir übergeben jetzt auch fish und water an die Engine
+def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Unbekannt"):
+    # 1. BASIS-RECHNUNG (Die Mondmathematik)
     prior_a = 2 
     prior_b = 38
     alpha = catches + prior_a
@@ -19,13 +20,16 @@ def run_nasa_engine(catches, attempts, weather=None):
     nasa_score = np.mean(robust_samples)
     uncertainty = np.std(robust_samples)
     
-    # KI-LOG (Hier lernt das Gehirn!)
+    # 2. KI-LOG (Hier sieht das Gehirn jetzt ALLES)
     if weather:
-        print(f"--- KI LERNT ---")
-        print(f"Fang bei {weather.get('abs_pressure')} hPa")
-        print(f"Trend 3h: {weather.get('pressure_trend_3h')} hPa")
-        print(f"Mondphase: {weather.get('moon_phase')}")
-        # In der echten KI-Stufe speichern wir dies später in einer Datenbank
+        print(f"\n--- 🧠 NEUER DATENSATZ FÜR KI ---")
+        print(f"Ziel: {fish} am Gewässer: {water}")
+        print(f"Erfolg: {catches} Fänge bei {attempts} Versuchen")
+        print(f"Wetter: {weather.get('abs_pressure')} hPa | Trend 3h: {weather.get('pressure_trend_3h')} hPa")
+        if 'lat' in weather and 'lng' in weather:
+            print(f"Koordinaten: {weather.get('lat')}, {weather.get('lng')}")
+        print(f"----------------------------------\n")
+        # HIER kommt gleich die Datenbank hin!
     
     return {
         "score": round(nasa_score * 100, 2),
@@ -34,22 +38,27 @@ def run_nasa_engine(catches, attempts, weather=None):
 
 @app.route('/')
 def home():
-    return "NASA BRAIN: WEATHER-AWARE ENGINE ONLINE"
+    return "NASA BRAIN: FULL-CONTEXT ENGINE ONLINE"
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
     data = request.json
+    
+    # Den Rucksack komplett auspacken:
     c = data.get('catches', 0)
     a = data.get('attempts', 0)
-    w = data.get('weather_context') # Das neue Wetter-Paket
+    w = data.get('weather_context')
+    fish_type = data.get('fish_type', 'Unbekannt')
+    water_id = data.get('water_id', 'Unbekannt')
     
-    result = run_nasa_engine(c, a, weather=w)
+    # Alles an die Engine übergeben
+    result = run_nasa_engine(c, a, weather=w, fish=fish_type, water=water_id)
     
     return jsonify({
       "status": "success",
       "nasa_score": f"{result['score']}%",
       "confidence_gap": f"{result['uncertainty']}%",
-      "method": "Monte Carlo + Weather Fact Recording"
+      "method": "Monte Carlo + Full Context Recording"
     })
 
 if __name__ == "__main__":
