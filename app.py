@@ -12,7 +12,7 @@ HISTORY_FILE = "ai_history.json"
 def save_to_memory(catches, attempts, weather, fish, water):
     """Speichert den Rucksack dauerhaft in der Datenbank ab."""
     if not weather:
-        return # Ohne Wetter lernen wir nichts
+        return 
         
     entry = {
         "timestamp": datetime.now().isoformat(),
@@ -23,7 +23,6 @@ def save_to_memory(catches, attempts, weather, fish, water):
         "weather": weather
     }
     
-    # 1. Aktenordner öffnen (falls er schon existiert)
     history = []
     if os.path.exists(HISTORY_FILE):
         try:
@@ -32,10 +31,8 @@ def save_to_memory(catches, attempts, weather, fish, water):
         except Exception as e:
             print(f"Fehler beim Lesen der Akte: {e}")
             
-    # 2. Neue Postkarte abheften
     history.append(entry)
     
-    # 3. Aktenordner wieder schließen und speichern
     with open(HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=4)
         
@@ -44,7 +41,8 @@ def save_to_memory(catches, attempts, weather, fish, water):
     print(f"Zielfisch: {fish} | Gewässer: {water}")
     print(f"-----------------------------\n")
 
-def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Unbekannt"):
+# HIER IST DIE ÄNDERUNG 1: Der Parameter "save_memory"
+def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Unbekannt", save_memory=False):
     # 1. BASIS-RECHNUNG
     prior_a = 2 
     prior_b = 38
@@ -59,8 +57,9 @@ def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Un
     nasa_score = np.mean(robust_samples)
     uncertainty = np.std(robust_samples)
     
-    # 2. ERINNERUNG SPEICHERN
-    save_to_memory(catches, attempts, weather, fish, water)
+    # 2. ERINNERUNG SPEICHERN (Nur wenn es vom Speichern-Button kommt)
+    if save_memory:
+        save_to_memory(catches, attempts, weather, fish, water)
     
     return {
         "score": round(nasa_score * 100, 2),
@@ -69,15 +68,18 @@ def run_nasa_engine(catches, attempts, weather=None, fish="Unbekannt", water="Un
 
 @app.route('/')
 def home():
-    # Wir zeigen direkt an, wie viele Einträge die KI schon gelernt hat
     count = 0
     if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f:
-            count = len(json.load(f))
+        try:
+            with open(HISTORY_FILE, "r") as f:
+                count = len(json.load(f))
+        except:
+            pass
     return f"NASA BRAIN ONLINE. Ich habe bereits {count} Angel-Erlebnisse studiert."
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
+    # ROUTE 1: FÜR DAS SPEICHERN VON FÄNGEN (Hier lernt die KI)
     data = request.json
     
     c = data.get('catches', 0)
@@ -86,7 +88,8 @@ def analyze():
     fish_type = data.get('fish_type', 'Unbekannt')
     water_id = data.get('water_id', 'Unbekannt')
     
-    result = run_nasa_engine(c, a, weather=w, fish=fish_type, water=water_id)
+    # WICHTIG: save_memory=True (Hier wird gespeichert!)
+    result = run_nasa_engine(c, a, weather=w, fish=fish_type, water=water_id, save_memory=True)
     
     return jsonify({
       "status": "success",
@@ -95,6 +98,27 @@ def analyze():
       "method": "Monte Carlo + Database Storage"
     })
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+# HIER IST DIE ÄNDERUNG 2: Die Autobahn für das Radar
+@app.route('/analyze_batch', methods=['POST'])
+def analyze_batch():
+    # ROUTE 2: FÜR DAS LIVE-RADAR (Hier rechnet sie nur als Taschenrechner)
+    data = request.json
+    spots = data.get('spots', [])
+    
+    results = []
+    
+    for spot in spots:
+        req_id = spot.get('request_id')
+        c = spot.get('catches', 0)
+        a = spot.get('attempts', 0)
+        
+        # WICHTIG: save_memory=False (Radar-Checks werden NICHT in der Datenbank gespeichert)
+        res = run_nasa_engine(c, a, save_memory=False)
+        
+        results.append({
+            "request_id": req_id,
+            "score": res['score'],
+            "uncertainty": res['uncertainty']
+        })
+        
+    return jsonify({"status": "success", "
